@@ -1,0 +1,69 @@
+
+name: Build FARX NEXUS 3 Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'FARX-NEXUS-3.zip'
+      - '.github/workflows/build-android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Android build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo6 cmake libffi-dev libssl-dev \
+            build-essential
+
+      - name: Extract FARX source
+        run: |
+          test -f FARX-NEXUS-3.zip
+          mkdir -p "$RUNNER_TEMP/farx"
+          unzip -q FARX-NEXUS-3.zip -d "$RUNNER_TEMP/farx"
+          find "$RUNNER_TEMP/farx" -maxdepth 3 -type f | head -80
+
+      - name: Locate Android project
+        run: |
+          SPEC="$(find "$RUNNER_TEMP/farx" -name buildozer.spec -print -quit)"
+          test -n "$SPEC"
+          echo "PROJECT_DIR=$(dirname "$SPEC")" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "Cython==0.29.36" "buildozer==1.5.0"
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: buildozer -v android debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FARX-NEXUS-3-APK
+          path: ${{ env.PROJECT_DIR }}/bin/*.apk
+          if-no-files-found: error
+          
